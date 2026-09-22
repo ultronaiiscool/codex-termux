@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 #![cfg_attr(not(target_os = "android"), allow(dead_code))]
 
 #[cfg(not(target_os = "android"))]
