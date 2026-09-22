@@ -237,7 +237,15 @@ fn get_bash_shell() -> Option<DetectedShell> {
     })
 }
 
+#[cfg(target_os = "android")]
+const SH_FALLBACK_PATHS: &[&str] = &["/system/bin/sh"];
+#[cfg(not(target_os = "android"))]
 const SH_FALLBACK_PATHS: &[&str] = &["/bin/sh"];
+
+#[cfg(target_os = "android")]
+const ULTIMATE_FALLBACK_SH_PATH: &str = "/system/bin/sh";
+#[cfg(not(target_os = "android"))]
+const ULTIMATE_FALLBACK_SH_PATH: &str = "/bin/sh";
 
 fn get_sh_shell() -> Option<DetectedShell> {
     let shell_path = get_shell_path(ShellType::Sh, "sh", SH_FALLBACK_PATHS);
@@ -321,7 +329,7 @@ pub fn ultimate_fallback_shell() -> DetectedShell {
     } else {
         DetectedShell {
             shell_type: ShellType::Sh,
-            shell_path: PathBuf::from("/bin/sh"),
+            shell_path: PathBuf::from(ULTIMATE_FALLBACK_SH_PATH),
         }
     }
 }
