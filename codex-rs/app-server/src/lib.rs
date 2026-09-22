@@ -603,6 +603,10 @@ pub async fn run_main_with_transport_options(
                     ),
                 ))
             }
+            #[cfg(target_os = "android")]
+            CodeModeHostTransport::InProcess => Some(Arc::new(
+                codex_code_mode_runtime::InProcessCodeModeSessionProvider,
+            )),
         };
     let environment_manager = if ignore_user_config {
         EnvironmentManager::from_env(Some(local_runtime_paths), config.http_client_factory()).await
