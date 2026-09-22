@@ -569,10 +569,22 @@ pub async fn run_main_embedded(
         Some(codex_home) => codex_home,
         None => find_codex_home()?,
     };
-    let local_runtime_paths = ExecServerRuntimePaths::from_optional_paths(
-        arg0_paths.codex_self_exe.clone(),
-        arg0_paths.codex_linux_sandbox_exe.clone(),
-    )?;
+    #[cfg(target_os = "android")]
+    let use_embedded_android_local_runtime = matches!(
+        runtime_options.code_mode_host_transport,
+        CodeModeHostTransport::InProcess
+    );
+    #[cfg(not(target_os = "android"))]
+    let use_embedded_android_local_runtime = false;
+
+    let local_runtime_paths = if use_embedded_android_local_runtime {
+        None
+    } else {
+        Some(ExecServerRuntimePaths::from_optional_paths(
+            arg0_paths.codex_self_exe.clone(),
+            arg0_paths.codex_linux_sandbox_exe.clone(),
+        )?)
+    };
     let ignore_user_config = loader_overrides.ignore_user_config;
     let config_manager = ConfigManager::new(
         codex_home.to_path_buf(),
@@ -635,9 +647,14 @@ pub async fn run_main_embedded(
     };
     config.auth_config().validate()?;
     #[cfg(target_os = "macos")]
-    let local_runtime_paths = local_runtime_paths.with_allowed_symlinked_codex_home(
-        codex_config::allowed_symlinked_codex_home(&config.config_layer_stack, &config.codex_home),
-    );
+    let local_runtime_paths = local_runtime_paths.map(|local_runtime_paths| {
+        local_runtime_paths.with_allowed_symlinked_codex_home(
+            codex_config::allowed_symlinked_codex_home(
+                &config.config_layer_stack,
+                &config.codex_home,
+            ),
+        )
+    });
     let code_mode_session_provider: Option<Arc<dyn CodeModeSessionProvider>> =
         match &runtime_options.code_mode_host_transport {
             CodeModeHostTransport::Local => None,
@@ -661,11 +678,11 @@ pub async fn run_main_embedded(
             )),
         };
     let environment_manager = if ignore_user_config {
-        EnvironmentManager::from_env(Some(local_runtime_paths), config.http_client_factory()).await
+        EnvironmentManager::from_env(local_runtime_paths, config.http_client_factory()).await
     } else {
         EnvironmentManager::from_codex_home(
             codex_home.clone(),
-            Some(local_runtime_paths),
+            local_runtime_paths,
             config.http_client_factory(),
         )
         .await
