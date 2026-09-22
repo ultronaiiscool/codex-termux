@@ -25,6 +25,10 @@ pub enum CodeModeHostTransport {
     Local,
     /// Share an HTTP/2 gRPC connection to the specified remote code-mode host.
     Grpc(Url),
+    /// Run the V8 Code Mode runtime in this process. Android embedding uses
+    /// this to keep the Quest backend inside one native shared library.
+    #[cfg(target_os = "android")]
+    InProcess,
 }
 
 impl From<AppServerCodeModeHostArgs> for CodeModeHostTransport {
