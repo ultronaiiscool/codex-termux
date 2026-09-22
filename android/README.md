@@ -32,6 +32,11 @@ The library only permits loopback WebSocket binds. BoneAI supplies an absolute,
 writable app-private directory as `codex_home`; the native library does not
 hard-code another Android package name.
 
+For the embedded Android build, local shell and filesystem tools run directly
+inside the host application's Android sandbox. They do not re-enter a standalone
+`codex` executable. Desktop Codex sandbox-helper requests are unavailable in
+this mode and fail explicitly rather than spawning a helper process.
+
 ## Build
 
 Use Android NDK r28.2 and Rust 1.95.0:
