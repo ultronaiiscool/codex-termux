@@ -19,6 +19,7 @@ use codex_app_server::AppServerWebsocketAuthSettings;
 use codex_app_server::CodeModeHostTransport;
 use codex_app_server::PluginStartupTasks;
 use codex_app_server::RemoteControlStartupMode;
+use codex_async_utils::THREAD_STACK_SIZE_BYTES;
 use codex_arg0::Arg0DispatchPaths;
 use codex_config::LoaderOverrides;
 use codex_protocol::protocol::SessionSource;
@@ -133,10 +134,12 @@ fn start_impl(bind_address: *const c_char, codex_home: *const c_char) -> Result<
 
     let thread = std::thread::Builder::new()
         .name("codex-app-server".to_string())
+        .stack_size(THREAD_STACK_SIZE_BYTES)
         .spawn(move || {
             let server_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let runtime = tokio::runtime::Builder::new_multi_thread()
                     .enable_all()
+                    .thread_stack_size(THREAD_STACK_SIZE_BYTES)
                     .build()
                     .map_err(|error| format!("failed to create Tokio runtime: {error}"))?;
 
