@@ -274,6 +274,33 @@ impl EnvironmentManager {
         local_runtime_paths: Option<ExecServerRuntimePaths>,
         http_client_factory: HttpClientFactory,
     ) -> Result<Self, ExecServerError> {
+        Self::from_snapshot_with_local_mode(
+            snapshot,
+            local_runtime_paths,
+            http_client_factory,
+            /*allow_local_without_runtime_paths*/ false,
+        )
+    }
+
+    #[cfg(target_os = "android")]
+    pub(crate) fn from_snapshot_android_embedded(
+        snapshot: EnvironmentProviderSnapshot,
+        http_client_factory: HttpClientFactory,
+    ) -> Result<Self, ExecServerError> {
+        Self::from_snapshot_with_local_mode(
+            snapshot,
+            /*local_runtime_paths*/ None,
+            http_client_factory,
+            /*allow_local_without_runtime_paths*/ true,
+        )
+    }
+
+    fn from_snapshot_with_local_mode(
+        snapshot: EnvironmentProviderSnapshot,
+        local_runtime_paths: Option<ExecServerRuntimePaths>,
+        http_client_factory: HttpClientFactory,
+        allow_local_without_runtime_paths: bool,
+    ) -> Result<Self, ExecServerError> {
         let EnvironmentProviderSnapshot {
             environments,
             default,
@@ -282,15 +309,23 @@ impl EnvironmentManager {
         let mut environment_map =
             HashMap::with_capacity(environments.len() + usize::from(include_local));
         let local_environment = if include_local {
-            let local_runtime_paths = local_runtime_paths.clone().ok_or_else(|| {
-                ExecServerError::Protocol(
-                    "local environment requires configured runtime paths".to_string(),
-                )
-            })?;
-            let local_environment = Arc::new(Environment::local(
-                local_runtime_paths,
-                http_client_factory.clone(),
-            ));
+            let local_environment = match local_runtime_paths.clone() {
+                Some(local_runtime_paths) => Arc::new(Environment::local(
+                    local_runtime_paths,
+                    http_client_factory.clone(),
+                )),
+                #[cfg(target_os = "android")]
+                None if allow_local_without_runtime_paths => {
+                    Arc::new(Environment::local_android_embedded(
+                        http_client_factory.clone(),
+                    ))
+                }
+                None => {
+                    return Err(ExecServerError::Protocol(
+                        "local environment requires configured runtime paths".to_string(),
+                    ));
+                }
+            };
             environment_map.insert(
                 LOCAL_ENVIRONMENT_ID.to_string(),
                 Arc::clone(&local_environment),
@@ -773,6 +808,24 @@ impl Environment {
             )),
             http_client: Arc::new(RouteAwareHttpClient::new(http_client_factory)),
             local_runtime_paths: Some(local_runtime_paths),
+        }
+    }
+
+    /// Android embedding has no standalone Codex executable to re-enter for
+    /// desktop sandbox helpers. Local execution and filesystem access still
+    /// work inside the Android application sandbox; explicit Codex sandbox
+    /// requests fail cleanly because runtime helper paths are absent.
+    #[cfg(target_os = "android")]
+    pub(crate) fn local_android_embedded(http_client_factory: HttpClientFactory) -> Self {
+        Self {
+            remote_client: None,
+            ready_info: Arc::new(ArcSwapOption::empty()),
+            provisioning_status_tx: None,
+            startup_task: Arc::new(Mutex::new(None)),
+            exec_backend: Arc::new(LocalProcess::default()),
+            filesystem: Arc::new(LocalFileSystem::unsandboxed()),
+            http_client: Arc::new(RouteAwareHttpClient::new(http_client_factory)),
+            local_runtime_paths: None,
         }
     }
 
