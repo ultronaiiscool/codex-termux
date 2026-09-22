@@ -52,11 +52,21 @@ impl PreparedEnvironmentManager {
                     http_client_factory,
                 )
             }
-            PreparedEnvironmentSource::Snapshot(snapshot) => EnvironmentManager::from_snapshot(
-                snapshot,
-                local_runtime_paths,
-                http_client_factory,
-            ),
+            PreparedEnvironmentSource::Snapshot(snapshot) => {
+                #[cfg(target_os = "android")]
+                if local_runtime_paths.is_none() {
+                    return EnvironmentManager::from_snapshot_android_embedded(
+                        snapshot,
+                        http_client_factory,
+                    );
+                }
+
+                EnvironmentManager::from_snapshot(
+                    snapshot,
+                    local_runtime_paths,
+                    http_client_factory,
+                )
+            },
         }
     }
 }
