@@ -6,6 +6,10 @@ on:
       - "quest/**"
   workflow_dispatch:
 
+concurrency:
+  group: quest-native-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-quest-native:
     name: Build Quest native App Server
