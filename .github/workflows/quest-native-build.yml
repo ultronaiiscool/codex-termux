@@ -18,7 +18,7 @@ jobs:
       CARGO_PROFILE_RELEASE_OPT_LEVEL: "3"
       CARGO_PROFILE_RELEASE_LTO: "thin"
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "4"
-      CARGO_PROFILE_RELEASE_PANIC: "abort"
+      CARGO_PROFILE_RELEASE_PANIC: "unwind"
       CARGO_PROFILE_RELEASE_STRIP: "symbols"
 
     steps:
@@ -104,10 +104,12 @@ jobs:
           llvm-readelf -h "${output}"
           llvm-readelf -d "${output}" | tee /tmp/codex-needed.txt
 
-          if grep -q 'libc++_shared.so' /tmp/codex-needed.txt; then
-            echo "libcodex_app_server.so still requires libc++_shared.so" >&2
-            exit 1
-          fi
+          for forbidden in libc++_shared.so libssl.so libcrypto.so; do
+            if grep -q "${forbidden}" /tmp/codex-needed.txt; then
+              echo "libcodex_app_server.so has unexpected runtime dependency: ${forbidden}" >&2
+              exit 1
+            fi
+          done
 
           for symbol in             codex_app_server_start             codex_app_server_stop             codex_app_server_is_running             codex_app_server_last_error             codex_app_server_version; do
             llvm-nm -D --defined-only "${output}" | grep -q " ${symbol}$" || {
