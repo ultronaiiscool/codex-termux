@@ -571,7 +571,7 @@ pub async fn run_main_embedded(
     };
     #[cfg(target_os = "android")]
     let use_embedded_android_local_runtime = matches!(
-        runtime_options.code_mode_host_transport,
+        &runtime_options.code_mode_host_transport,
         CodeModeHostTransport::InProcess
     );
     #[cfg(not(target_os = "android"))]
