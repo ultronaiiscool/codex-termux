@@ -134,41 +134,43 @@ fn start_impl(bind_address: *const c_char, codex_home: *const c_char) -> Result<
     let thread = std::thread::Builder::new()
         .name("codex-app-server".to_string())
         .spawn(move || {
-            let runtime = match tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-            {
-                Ok(runtime) => runtime,
-                Err(error) => {
-                    set_last_error(format!("failed to create Tokio runtime: {error}"));
-                    return;
-                }
-            };
+            let server_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let runtime = tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|error| format!("failed to create Tokio runtime: {error}"))?;
 
-            let result = runtime.block_on(codex_app_server::run_main_embedded(
-                Arg0DispatchPaths::default(),
-                CliConfigOverrides::default(),
-                LoaderOverrides::default(),
-                false,
-                false,
-                AppServerTransport::WebSocket { bind_address },
-                SessionSource::VSCode,
-                AppServerWebsocketAuthSettings::default(),
-                AppServerRuntimeOptions {
-                    code_mode_host_transport: CodeModeHostTransport::InProcess,
-                    plugin_startup_tasks: PluginStartupTasks::Start,
-                    remote_control_startup_mode: RemoteControlStartupMode::DisabledEphemeral,
-                    install_shutdown_signal_handler: false,
-                    managed_daemon: false,
-                },
-                AppServerEmbeddedOptions {
-                    codex_home: Some(codex_home),
-                    shutdown_token: Some(server_shutdown),
-                },
-            ));
+                runtime
+                    .block_on(codex_app_server::run_main_embedded(
+                        Arg0DispatchPaths::default(),
+                        CliConfigOverrides::default(),
+                        LoaderOverrides::default(),
+                        false,
+                        false,
+                        AppServerTransport::WebSocket { bind_address },
+                        SessionSource::VSCode,
+                        AppServerWebsocketAuthSettings::default(),
+                        AppServerRuntimeOptions {
+                            code_mode_host_transport: CodeModeHostTransport::InProcess,
+                            plugin_startup_tasks: PluginStartupTasks::Start,
+                            remote_control_startup_mode:
+                                RemoteControlStartupMode::DisabledEphemeral,
+                            install_shutdown_signal_handler: false,
+                            managed_daemon: false,
+                        },
+                        AppServerEmbeddedOptions {
+                            codex_home: Some(codex_home),
+                            shutdown_token: Some(server_shutdown),
+                        },
+                    ))
+                    .map(|_| ())
+                    .map_err(|error| format!("Codex App Server exited with error: {error}"))
+            }));
 
-            if let Err(error) = result {
-                set_last_error(format!("Codex App Server exited with error: {error}"));
+            match server_result {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => set_last_error(error),
+                Err(_) => set_last_error("panic in embedded Codex App Server thread"),
             }
         })
         .map_err(|error| format!("failed to create App Server thread: {error}"))?;
