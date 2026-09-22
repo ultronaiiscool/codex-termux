@@ -6,6 +6,8 @@ use codex_code_mode_protocol::CodeModeNestedToolCall;
 use codex_code_mode_protocol::CodeModeSession;
 use codex_code_mode_protocol::CodeModeSessionCellExecutionLimits;
 use codex_code_mode_protocol::CodeModeSessionDelegate;
+use codex_code_mode_protocol::CodeModeSessionProvider;
+use codex_code_mode_protocol::CodeModeSessionProviderFuture;
 use codex_code_mode_protocol::CodeModeSessionResultFuture;
 use codex_code_mode_protocol::CodeModeToolKind;
 use codex_code_mode_protocol::DEFAULT_EXEC_YIELD_TIME_MS;
@@ -33,6 +35,37 @@ const MIN_YIELD_TIME_FOR_GRACE: Duration = Duration::from_secs(10);
 pub struct InProcessCodeModeSession {
     runtime: SessionRuntime<ProtocolDelegate>,
     cell_execution_limits: CodeModeSessionCellExecutionLimits,
+}
+
+/// Creates V8-backed Code Mode sessions in the current process.
+///
+/// Android embedding uses this provider so the Quest runtime can remain a
+/// single shared library without spawning `codex-code-mode-host`.
+#[derive(Debug, Default)]
+pub struct InProcessCodeModeSessionProvider;
+
+impl CodeModeSessionProvider for InProcessCodeModeSessionProvider {
+    fn create_session<'a>(
+        &'a self,
+        delegate: Arc<dyn CodeModeSessionDelegate>,
+    ) -> CodeModeSessionProviderFuture<'a> {
+        Box::pin(async move {
+            Ok(Arc::new(InProcessCodeModeSession::with_delegate(delegate))
+                as Arc<dyn CodeModeSession>)
+        })
+    }
+
+    fn create_session_with_limits<'a>(
+        &'a self,
+        delegate: Arc<dyn CodeModeSessionDelegate>,
+        limits: CodeModeSessionCellExecutionLimits,
+    ) -> CodeModeSessionProviderFuture<'a> {
+        Box::pin(async move {
+            Ok(Arc::new(InProcessCodeModeSession::with_delegate_and_limits(
+                delegate, limits,
+            )) as Arc<dyn CodeModeSession>)
+        })
+    }
 }
 
 impl InProcessCodeModeSession {
