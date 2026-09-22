@@ -10,7 +10,6 @@ use codex_core::config::Config;
 use codex_core::config::UnsupportedUntrustedApprovalPolicyError;
 use codex_core::resolve_installation_id;
 use codex_login::AuthManager;
-#[cfg(debug_assertions)]
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_cli::CliConfigOverrides;
 use std::collections::HashMap;
@@ -429,6 +428,13 @@ fn log_format_from_env() -> LogFormat {
     LogFormat::from_env_value(value.as_deref())
 }
 
+async fn wait_for_embedded_shutdown(token: Option<&CancellationToken>) {
+    match token {
+        Some(token) => token.cancelled().await,
+        None => std::future::pending::<()>().await,
+    }
+}
+
 pub async fn run_main(
     arg0_paths: Arg0DispatchPaths,
     cli_config_overrides: CliConfigOverrides,
@@ -486,6 +492,17 @@ impl Default for AppServerRuntimeOptions {
     }
 }
 
+/// Embedding-only overrides that avoid process-global environment mutation.
+#[derive(Clone, Default)]
+pub struct AppServerEmbeddedOptions {
+    /// Explicit Codex state/config directory. When omitted, normal CODEX_HOME
+    /// resolution is preserved.
+    pub codex_home: Option<AbsolutePathBuf>,
+    /// Optional host-owned shutdown token. Cancelling it requests the same
+    /// graceful drain used by the standalone server's shutdown signal.
+    pub shutdown_token: Option<CancellationToken>,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn run_main_with_transport_options(
     arg0_paths: Arg0DispatchPaths,
@@ -498,6 +515,38 @@ pub async fn run_main_with_transport_options(
     auth: AppServerWebsocketAuthSettings,
     runtime_options: AppServerRuntimeOptions,
 ) -> IoResult<AppServerExit> {
+    run_main_embedded(
+        arg0_paths,
+        cli_config_overrides,
+        loader_overrides,
+        strict_config,
+        default_analytics_enabled,
+        transport,
+        session_source,
+        auth,
+        runtime_options,
+        AppServerEmbeddedOptions::default(),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn run_main_embedded(
+    arg0_paths: Arg0DispatchPaths,
+    cli_config_overrides: CliConfigOverrides,
+    loader_overrides: LoaderOverrides,
+    strict_config: bool,
+    default_analytics_enabled: bool,
+    transport: AppServerTransport,
+    session_source: SessionSource,
+    auth: AppServerWebsocketAuthSettings,
+    runtime_options: AppServerRuntimeOptions,
+    embedded_options: AppServerEmbeddedOptions,
+) -> IoResult<AppServerExit> {
+    let AppServerEmbeddedOptions {
+        codex_home: codex_home_override,
+        shutdown_token: external_shutdown_token,
+    } = embedded_options;
     let loader_overrides = loader_overrides_with_test_user_config_file(
         loader_overrides,
         test_user_config_file_from_env(),
@@ -516,7 +565,10 @@ pub async fn run_main_with_transport_options(
             format!("error parsing -c overrides: {e}"),
         )
     })?;
-    let codex_home = find_codex_home()?;
+    let codex_home = match codex_home_override {
+        Some(codex_home) => codex_home,
+        None => find_codex_home()?,
+    };
     let local_runtime_paths = ExecServerRuntimePaths::from_optional_paths(
         arg0_paths.codex_self_exe.clone(),
         arg0_paths.codex_linux_sandbox_exe.clone(),
@@ -1065,6 +1117,15 @@ pub async fn run_main_with_transport_options(
                         };
                         let running_turn_count = *running_turn_count_rx.borrow();
                         shutdown_state.on_signal(signal, connections.len(), running_turn_count, &processor.turn_admission);
+                    }
+                    _ = wait_for_embedded_shutdown(external_shutdown_token.as_ref()), if !shutdown_state.requested() => {
+                        let running_turn_count = *running_turn_count_rx.borrow();
+                        shutdown_state.on_signal(
+                            ShutdownSignal::Forceable,
+                            connections.len(),
+                            running_turn_count,
+                            &processor.turn_admission,
+                        );
                     }
                     changed = running_turn_count_rx.changed(), if shutdown_state.requested() => {
                         if changed.is_err() {
