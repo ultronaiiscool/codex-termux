@@ -12,6 +12,7 @@ members = [
     "attachment-store",
     "async-utils",
     "app-server",
+    "app-server-android",
     "app-server-transport",
     "app-server-daemon",
     "app-server-client",
