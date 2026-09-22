@@ -13,6 +13,12 @@ const CODE_MODE_HOST_EXECUTABLE_NAME: &str = if cfg!(windows) {
 } else {
     "codex-code-mode-host"
 };
+
+/// Android 10+ does not allow executing binaries copied into writable app data.
+/// APK launchers can instead package an executable ELF in `jniLibs`, where the
+/// package manager exposes it from the app's native library directory.
+#[cfg(target_os = "android")]
+const CODE_MODE_HOST_ANDROID_APK_EXECUTABLE_NAME: &str = "libcodex_code_mode_host.so";
 const PACKAGE_METADATA_FILENAME: &str = "codex-package.json";
 const PATH_DIRNAME: &str = "codex-path";
 const RELEASES_DIRNAME: &str = "releases";
@@ -196,6 +202,15 @@ impl InstallContext {
             let executable = executable_dir.join(CODE_MODE_HOST_EXECUTABLE_NAME);
             if executable.is_file() {
                 return executable.into_path_buf();
+            }
+
+            #[cfg(target_os = "android")]
+            {
+                let apk_executable =
+                    executable_dir.join(CODE_MODE_HOST_ANDROID_APK_EXECUTABLE_NAME);
+                if apk_executable.is_file() {
+                    return apk_executable.into_path_buf();
+                }
             }
         }
 
