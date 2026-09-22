@@ -8,6 +8,9 @@ export PATH="${toolchain}/bin:${PATH}"
 export LIBLZMA_NO_PKG_CONFIG=1
 export PKG_CONFIG_ALLOW_CROSS=1
 export OPENSSL_NO_PKG_CONFIG=1
+# This library runs inside BONELAB. Keep Rust panics unwindable so the C ABI
+# can catch them instead of aborting the entire game process.
+export CARGO_PROFILE_RELEASE_PANIC=unwind
 export CC_aarch64_linux_android="aarch64-linux-android29-clang"
 export CXX_aarch64_linux_android="aarch64-linux-android29-clang++"
 export AR_aarch64_linux_android="llvm-ar"
