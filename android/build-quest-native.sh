@@ -37,12 +37,30 @@ export RUSTFLAGS="${rustflags}"
 
 (
   cd codex-rs
-  rustup run 1.95.0 cargo build     --target aarch64-linux-android     --release     -p codex-app-server-android
+  rustup run 1.95.0 cargo build \
+    --target aarch64-linux-android \
+    --release \
+    -p codex-app-server-android
 )
 
 output="codex-rs/target/aarch64-linux-android/release/libcodex_app_server.so"
 llvm-readelf -h "${output}"
 llvm-readelf -d "${output}" | tee "${output}.needed.txt"
+llvm-readelf -lW "${output}" | tee "${output}.program-headers.txt"
+
+if ! awk '
+  $1 == "LOAD" {
+    found = 1
+    if ($NF != "0x4000") {
+      bad = 1
+      print "unexpected LOAD alignment: " $0 > "/dev/stderr"
+    }
+  }
+  END { exit (!found || bad) }
+' "${output}.program-headers.txt"; then
+  echo "${output} is not 16 KiB page compatible" >&2
+  exit 1
+fi
 
 for forbidden in libc++_shared.so libssl.so libcrypto.so; do
   if grep -q "${forbidden}" "${output}.needed.txt"; then
@@ -51,6 +69,7 @@ for forbidden in libc++_shared.so libssl.so libcrypto.so; do
   fi
 done
 
+llvm-nm -D --defined-only "${output}" | tee "${output}.symbols.txt"
 for symbol in \
   codex_app_server_start \
   codex_app_server_stop \
@@ -58,7 +77,7 @@ for symbol in \
   codex_app_server_last_error \
   codex_app_server_version \
   codex_app_server_clear_error; do
-  llvm-nm -D --defined-only "${output}" | grep -q " ${symbol}$" || {
+  grep -q " ${symbol}$" "${output}.symbols.txt" || {
     echo "missing exported symbol: ${symbol}" >&2
     exit 1
   }

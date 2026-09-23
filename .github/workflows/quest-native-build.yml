@@ -105,10 +105,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          toolchain="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64"
+          export PATH="${toolchain}/bin:${PATH}"
           output="codex-rs/target/aarch64-linux-android/release/libcodex_app_server.so"
           file "${output}"
           llvm-readelf -h "${output}"
           llvm-readelf -d "${output}" | tee /tmp/codex-needed.txt
+          llvm-readelf -lW "${output}" | tee /tmp/codex-program-headers.txt
+
+          if ! awk '
+            $1 == "LOAD" {
+              found = 1
+              if ($NF != "0x4000") {
+                bad = 1
+                print "unexpected LOAD alignment: " $0 > "/dev/stderr"
+              }
+            }
+            END { exit (!found || bad) }
+          ' /tmp/codex-program-headers.txt; then
+            echo "libcodex_app_server.so is not 16 KiB page compatible" >&2
+            exit 1
+          fi
 
           for forbidden in libc++_shared.so libssl.so libcrypto.so; do
             if grep -q "${forbidden}" /tmp/codex-needed.txt; then
@@ -117,6 +134,7 @@ jobs:
             fi
           done
 
+          llvm-nm -D --defined-only "${output}" | tee /tmp/codex-symbols.txt
           for symbol in \
             codex_app_server_start \
             codex_app_server_stop \
@@ -124,7 +142,7 @@ jobs:
             codex_app_server_last_error \
             codex_app_server_version \
             codex_app_server_clear_error; do
-            llvm-nm -D --defined-only "${output}" | grep -q " ${symbol}$" || {
+            grep -q " ${symbol}$" /tmp/codex-symbols.txt || {
               echo "missing exported symbol: ${symbol}" >&2
               exit 1
             }
