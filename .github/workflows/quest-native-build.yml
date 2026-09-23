@@ -139,6 +139,7 @@ jobs:
             codex_app_server_start \
             codex_app_server_stop \
             codex_app_server_is_running \
+            codex_app_server_security_version \
             codex_app_server_last_error \
             codex_app_server_version \
             codex_app_server_clear_error; do

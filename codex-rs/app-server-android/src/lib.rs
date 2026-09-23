@@ -16,7 +16,8 @@ use std::thread::JoinHandle;
 use codex_app_server::AppServerEmbeddedOptions;
 use codex_app_server::AppServerRuntimeOptions;
 use codex_app_server::AppServerTransport;
-use codex_app_server::AppServerWebsocketAuthSettings;
+use codex_app_server::AppServerWebsocketAuthArgs;
+use codex_app_server::WebsocketAuthCliMode;
 use codex_app_server::CodeModeHostTransport;
 use codex_app_server::PluginStartupTasks;
 use codex_app_server::RemoteControlStartupMode;
@@ -36,6 +37,12 @@ const INTERNAL_ERROR: i32 = -3;
 
 const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1:4500";
 const VERSION_CSTR: &str = concat!(env!("CARGO_PKG_VERSION"), "\0");
+
+/// A major compatibility gate for clients requiring authenticated, game-only mode.
+#[unsafe(no_mangle)]
+pub extern "C" fn codex_app_server_security_version() -> i32 {
+    1
+}
 
 struct ServerInstance {
     shutdown: CancellationToken,
@@ -116,13 +123,27 @@ fn reap_finished_locked(state: &mut NativeState) {
     }
 }
 
-fn start_impl(bind_address: *const c_char, codex_home: *const c_char) -> Result<i32, String> {
+fn start_impl(
+    bind_address: *const c_char,
+    codex_home: *const c_char,
+    token_sha256: *const c_char,
+) -> Result<i32, String> {
     let bind_address = unsafe { optional_c_string(bind_address) }?;
     let codex_home = unsafe { optional_c_string(codex_home) }?
         .ok_or_else(|| "codex_home is required".to_string())?;
+    let token_sha256 = unsafe { optional_c_string(token_sha256) }?
+        .ok_or_else(|| "WebSocket capability token digest is required".to_string())?;
+    let websocket_auth = AppServerWebsocketAuthArgs {
+        ws_auth: Some(WebsocketAuthCliMode::CapabilityToken),
+        ws_token_sha256: Some(token_sha256),
+        ..Default::default()
+    }
+    .try_into_settings()
+    .map_err(|error| format!("invalid WebSocket capability token digest: {error}"))?;
 
     let bind_address = parse_bind_address(bind_address)?;
     let codex_home = prepare_codex_home(codex_home)?;
+    codex_app_server::enable_embedded_game_only_tools();
 
     let mut native_state = state().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     reap_finished_locked(&mut native_state);
@@ -153,10 +174,10 @@ fn start_impl(bind_address: *const c_char, codex_home: *const c_char) -> Result<
                         false,
                         AppServerTransport::WebSocket { bind_address },
                         SessionSource::VSCode,
-                        AppServerWebsocketAuthSettings::default(),
+                        websocket_auth,
                         AppServerRuntimeOptions {
                             code_mode_host_transport: CodeModeHostTransport::InProcess,
-                            plugin_startup_tasks: PluginStartupTasks::Start,
+                            plugin_startup_tasks: PluginStartupTasks::Skip,
                             remote_control_startup_mode:
                                 RemoteControlStartupMode::DisabledEphemeral,
                             install_shutdown_signal_handler: false,
@@ -213,8 +234,9 @@ fn stop_impl() -> Result<i32, String> {
 pub extern "C" fn codex_app_server_start(
     bind_address: *const c_char,
     codex_home: *const c_char,
+    token_sha256: *const c_char,
 ) -> i32 {
-    match std::panic::catch_unwind(|| start_impl(bind_address, codex_home)) {
+    match std::panic::catch_unwind(|| start_impl(bind_address, codex_home, token_sha256)) {
         Ok(Ok(code)) => code,
         Ok(Err(error)) => {
             set_last_error(error);

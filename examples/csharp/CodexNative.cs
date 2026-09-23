@@ -9,7 +9,8 @@ internal static class CodexNative
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int codex_app_server_start(
         string bindAddress,
-        string codexHome);
+        string codexHome,
+        string tokenSha256);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int codex_app_server_stop();

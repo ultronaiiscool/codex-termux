@@ -157,6 +157,10 @@ mod thread_rollout_truncation;
 pub use thread_rollout_truncation::truncate_rollout_after_turn_id;
 pub use thread_rollout_truncation::truncate_rollout_before_turn_id;
 mod tools;
+#[cfg(target_os = "android")]
+pub fn enable_embedded_game_only_tools() {
+    tools::spec_plan::enable_embedded_game_only_tools();
+}
 pub(crate) mod turn_diff_tracker;
 mod turn_metadata;
 mod turn_timing;

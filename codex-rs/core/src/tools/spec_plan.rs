@@ -101,7 +101,17 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::btree_map::Entry;
 use std::sync::Arc;
+#[cfg(target_os = "android")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use tracing::instrument;
+
+#[cfg(target_os = "android")]
+static EMBEDDED_GAME_ONLY_TOOLS: AtomicBool = AtomicBool::new(false);
+
+#[cfg(target_os = "android")]
+pub(crate) fn enable_embedded_game_only_tools() {
+    EMBEDDED_GAME_ONLY_TOOLS.store(true, Ordering::Release);
+}
 
 const MULTI_AGENT_V2_NAMESPACE_DESCRIPTION: &str = "Tools for spawning and managing sub-agents.";
 const IMAGE_GEN_NAMESPACE: &str = "image_gen";
@@ -133,6 +143,25 @@ pub(crate) fn build_tool_router(
     step_store: &ExtensionData,
     tool_suggest_candidates: Option<&crate::tools::router::ToolSuggestCandidates>,
 ) -> CodexResult<ToolRouter> {
+    #[cfg(target_os = "android")]
+    if EMBEDDED_GAME_ONLY_TOOLS.load(Ordering::Acquire) {
+        let mut registry = ToolRegistry::default();
+        append_dynamic_tool_runtimes(&turn_context.dynamic_tools, &mut registry);
+        let specs = registry
+            .entries()
+            .filter(|tool| tool.exposure.is_direct())
+            .map(|tool| tool.runtime.spec())
+            .collect();
+        return Ok(ToolRouter::from_parts(
+            registry,
+            merge_into_namespaces(specs),
+            ToolMode::Direct,
+            BTreeMap::new(),
+            None,
+            &[],
+        ));
+    }
+
     let default_agent_type_description =
         crate::agent::role::spawn_tool_spec::build(&std::collections::BTreeMap::new());
     let wait_for_environment_tool_config = session

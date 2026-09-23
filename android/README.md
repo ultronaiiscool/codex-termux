@@ -66,7 +66,8 @@ Typical startup from C#:
 ```csharp
 int rc = CodexNative.codex_app_server_start(
     "127.0.0.1:4500",
-    codexHomeAbsolutePath);
+    codexHomeAbsolutePath,
+    sha256HexOfRandomCapabilityToken);
 ```
 
 Then poll:
@@ -85,6 +86,13 @@ After readiness succeeds, connect the existing App Server protocol client to:
 ```text
 ws://127.0.0.1:4500
 ```
+
+The WebSocket upgrade requires `Authorization: Bearer <capability-token>`.
+Generate at least 32 random bytes in BoneAI, keep the token in process memory,
+and pass only its SHA-256 hex digest to the native start function. The native
+server exposes only BoneAI's supplied dynamic game tools to the model in
+embedded mode; shell, filesystem, web, plugin, and child-agent tools are not
+registered.
 
 Authentication can be performed over the normal App Server protocol with
 `account/login/start` and `type: "chatgptDeviceCode"`; the returned
