@@ -80,13 +80,13 @@ jobs:
 
           builtins="$(find "${toolchain}" -name 'libclang_rt.builtins-aarch64-android.a' -print -quit)"
           libcxx_static="${toolchain}/sysroot/usr/lib/aarch64-linux-android/libc++_static.a"
-          libcxxabi_static="${toolchain}/sysroot/usr/lib/aarch64-linux-android/libc++abi.a"
+          libcxxabi_static="${toolchain}/lib/libc++abi.a"
 
           test -n "${builtins}" || { echo "compiler-rt builtins archive not found" >&2; exit 1; }
           test -f "${libcxx_static}" || { echo "ARM64 libc++_static.a not found at ${libcxx_static}" >&2; exit 1; }
 
           rustflags="-Clink-arg=${libcxx_static} -Clink-arg=${builtins}"
-          if [ -n "${libcxxabi_static}" ]; then
+          if [ -f "${libcxxabi_static}" ]; then
             rustflags="${rustflags} -Clink-arg=${libcxxabi_static}"
           fi
           rustflags="${rustflags} -Clink-arg=-Wl,-z,max-page-size=16384 -Clink-arg=-Wl,-z,common-page-size=16384"
@@ -96,7 +96,10 @@ jobs:
           export RUSTFLAGS="${rustflags}"
 
           cd codex-rs
-          rustup run 1.95.0 cargo build             --target aarch64-linux-android             --release             -p codex-app-server-android
+          rustup run 1.95.0 cargo build \
+            --target aarch64-linux-android \
+            --release \
+            -p codex-app-server-android
 
           output="target/aarch64-linux-android/release/libcodex_app_server.so"
           test -f "${output}"
@@ -118,7 +121,13 @@ jobs:
             fi
           done
 
-          for symbol in             codex_app_server_start             codex_app_server_stop             codex_app_server_is_running             codex_app_server_last_error             codex_app_server_version; do
+          for symbol in \
+            codex_app_server_start \
+            codex_app_server_stop \
+            codex_app_server_is_running \
+            codex_app_server_last_error \
+            codex_app_server_version \
+            codex_app_server_clear_error; do
             llvm-nm -D --defined-only "${output}" | grep -q " ${symbol}$" || {
               echo "missing exported symbol: ${symbol}" >&2
               exit 1
@@ -128,11 +137,36 @@ jobs:
           sha256sum "${output}" | tee "${output}.sha256"
           ls -lh "${output}" "${output}.sha256"
 
-      - name: Upload Quest library
+      - name: Package BoneAI integration bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="codex-rs/target/aarch64-linux-android/release/libcodex_app_server.so"
+          bundle="quest-codex-native"
+          rm -rf "${bundle}"
+          mkdir -p "${bundle}/licenses"
+
+          cp "${output}" "${bundle}/libcodex_app_server.so"
+          (
+            cd "${bundle}"
+            sha256sum libcodex_app_server.so > libcodex_app_server.so.sha256
+          )
+          cp android/quest-native/codex_app_server.h "${bundle}/codex_app_server.h"
+          cp examples/csharp/CodexNative.cs "${bundle}/CodexNative.cs"
+          cp android/README.md "${bundle}/README.md"
+          cp LICENSE "${bundle}/licenses/LICENSE"
+          cp NOTICE "${bundle}/licenses/NOTICE"
+          cp android/quest-native/THIRD_PARTY_LICENSES.md \
+            "${bundle}/licenses/THIRD_PARTY_LICENSES.md"
+
+          zip -r quest-codex-app-server-arm64.zip "${bundle}"
+          unzip -l quest-codex-app-server-arm64.zip
+
+      - name: Upload Quest library and integration bundle
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: quest-codex-app-server-arm64
           path: |
-            codex-rs/target/aarch64-linux-android/release/libcodex_app_server.so
-            codex-rs/target/aarch64-linux-android/release/libcodex_app_server.so.sha256
+            quest-codex-native/
+            quest-codex-app-server-arm64.zip
           if-no-files-found: error

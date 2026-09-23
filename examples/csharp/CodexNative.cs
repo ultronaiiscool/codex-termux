@@ -18,6 +18,12 @@ internal static class CodexNative
     internal static extern int codex_app_server_is_running();
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern IntPtr codex_app_server_version();
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void codex_app_server_clear_error();
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     private static extern UIntPtr codex_app_server_last_error(
         IntPtr buffer,
         UIntPtr bufferLength);
@@ -39,5 +45,10 @@ internal static class CodexNative
         {
             Marshal.FreeHGlobal(buffer);
         }
+    }
+
+    internal static string Version()
+    {
+        return Marshal.PtrToStringUTF8(codex_app_server_version()) ?? string.Empty;
     }
 }

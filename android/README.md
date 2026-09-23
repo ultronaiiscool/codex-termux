@@ -34,8 +34,10 @@ hard-code another Android package name.
 
 For the embedded Android build, local shell and filesystem tools run directly
 inside the host application's Android sandbox. They do not re-enter a standalone
-`codex` executable. Desktop Codex sandbox-helper requests are unavailable in
-this mode and fail explicitly rather than spawning a helper process.
+`codex` executable. When a normal Codex permission profile requests a desktop
+sandbox backend, the embedded Android path uses the host application's sandbox
+as the isolation boundary. This fallback is Android-only; it does not weaken
+desktop or standalone Termux behavior.
 
 ## Build
 
@@ -73,6 +75,11 @@ Then poll:
 http://127.0.0.1:4500/readyz
 ```
 
+The WebSocket transport implements this endpoint. A successful response means
+the listener is accepting requests; `codex_app_server_is_running()` only means
+the native server thread has not exited. If readiness does not arrive, call
+`CodexNative.LastError()` and treat a non-empty result as the startup failure.
+
 and connect the existing App Server protocol client to:
 
 ```text
@@ -82,7 +89,20 @@ ws://127.0.0.1:4500
 Authentication can be performed over the normal App Server protocol with
 `account/login/start` and `type: "chatgptDeviceCode"`; the returned
 verification URL and one-time code can be shown by BoneAI without relying on a
-desktop browser launcher.
+desktop browser launcher. API-key and token-based login methods exposed by the
+same protocol remain available; credentials belong in the caller-provided
+`codex_home` or protocol request and must never be compiled into the library.
+
+On shutdown, disconnect the WebSocket client and call:
+
+```csharp
+CodexNative.codex_app_server_stop();
+```
+
+The return codes are `0` for success, `1` when `start` finds an existing server,
+and negative values for invalid arguments or native startup/shutdown failures.
+Use `CodexNative.LastError()` for diagnostic text and
+`codex_app_server_clear_error()` after handling it.
 
 ## Android loading
 
@@ -90,7 +110,26 @@ desktop browser launcher.
 library search path. The `.so` must be loaded by Android's native linker (for
 example by the host/mod loader's supported native-library mechanism, or an
 explicit native load performed by the host) before the C# P/Invoke calls are
-made.
+made. For explicit loading, the Java/Android side can call `System.load()` with
+the absolute path to an app-accessible copy of `libcodex_app_server.so`; after
+that, `[DllImport("codex_app_server")]` resolves the stable C ABI. The exact
+copy/load hook is loader-specific and must use a mechanism supported by the
+installed BONELAB/LemonLoader environment.
+
+## CI artifact
+
+The `quest-codex-app-server-arm64` Actions artifact contains
+`quest-codex-app-server-arm64.zip` and an unpacked `quest-codex-native/`
+directory with:
+
+```text
+libcodex_app_server.so
+libcodex_app_server.so.sha256
+codex_app_server.h
+CodexNative.cs
+README.md
+licenses/
+```
 
 ## Verification levels
 

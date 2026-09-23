@@ -25,13 +25,13 @@ python3 scripts/check_v8_sandbox.py "${RUSTY_V8_ARCHIVE}"
 
 builtins="$(find "${toolchain}" -name 'libclang_rt.builtins-aarch64-android.a' -print -quit)"
 libcxx_static="${toolchain}/sysroot/usr/lib/aarch64-linux-android/libc++_static.a"
-libcxxabi_static="${toolchain}/sysroot/usr/lib/aarch64-linux-android/libc++abi.a"
+libcxxabi_static="${toolchain}/lib/libc++abi.a"
 
 test -n "${builtins}" || { echo "compiler-rt builtins archive not found" >&2; exit 1; }
 test -f "${libcxx_static}" || { echo "ARM64 libc++_static.a not found at ${libcxx_static}" >&2; exit 1; }
 
 rustflags="-Clink-arg=${libcxx_static} -Clink-arg=${builtins}"
-if [ -n "${libcxxabi_static}" ]; then
+if [ -f "${libcxxabi_static}" ]; then
   rustflags="${rustflags} -Clink-arg=${libcxxabi_static}"
 fi
 rustflags="${rustflags} -Clink-arg=-Wl,-z,max-page-size=16384 -Clink-arg=-Wl,-z,common-page-size=16384"
@@ -45,10 +45,29 @@ export RUSTFLAGS="${rustflags}"
 )
 
 output="codex-rs/target/aarch64-linux-android/release/libcodex_app_server.so"
-llvm-readelf -d "${output}"
-if llvm-readelf -d "${output}" | grep -q 'libc++_shared.so'; then
-  echo "unexpected dependency: libc++_shared.so" >&2
-  exit 1
-fi
+llvm-readelf -h "${output}"
+llvm-readelf -d "${output}" | tee "${output}.needed.txt"
+
+for forbidden in libc++_shared.so libssl.so libcrypto.so; do
+  if grep -q "${forbidden}" "${output}.needed.txt"; then
+    echo "unexpected dependency: ${forbidden}" >&2
+    exit 1
+  fi
+done
+
+for symbol in \
+  codex_app_server_start \
+  codex_app_server_stop \
+  codex_app_server_is_running \
+  codex_app_server_last_error \
+  codex_app_server_version \
+  codex_app_server_clear_error; do
+  llvm-nm -D --defined-only "${output}" | grep -q " ${symbol}$" || {
+    echo "missing exported symbol: ${symbol}" >&2
+    exit 1
+  }
+done
+
+sha256sum "${output}" > "${output}.sha256"
 
 echo "Built: ${output}"
