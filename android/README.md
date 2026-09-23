@@ -80,7 +80,7 @@ the listener is accepting requests; `codex_app_server_is_running()` only means
 the native server thread has not exited. If readiness does not arrive, call
 `CodexNative.LastError()` and treat a non-empty result as the startup failure.
 
-and connect the existing App Server protocol client to:
+After readiness succeeds, connect the existing App Server protocol client to:
 
 ```text
 ws://127.0.0.1:4500
