@@ -121,6 +121,28 @@ pub(crate) async fn prepare_exec_request_with_telemetry(
             windows_sandbox: None,
         });
     };
+
+    // The embedded Android App Server runs inside the host application's OS
+    // sandbox and deliberately has no standalone Codex executable or desktop
+    // sandbox helper to re-enter. Keep normal permission-profile tool calls
+    // usable in that environment by treating the Android application sandbox
+    // as the process boundary. This fallback is intentionally limited to
+    // Android environments that were constructed without helper runtime paths;
+    // desktop and standalone Android/Termux environments keep their existing
+    // sandbox behavior.
+    #[cfg(target_os = "android")]
+    if runtime_paths.is_none() {
+        return Ok(PreparedExecRequest {
+            command: params.argv.clone(),
+            cwd: native_path(&params.cwd, "cwd")?,
+            env,
+            arg0: params.arg0.clone(),
+            sandbox: SandboxType::None,
+            network_proxy_handle,
+            windows_sandbox: None,
+        });
+    }
+
     let windows_sandbox_proxy_settings_mode = sandbox_context
         .windows_sandbox_proxy_settings_mode
         .unwrap_or_default();

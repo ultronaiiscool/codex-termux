@@ -99,6 +99,13 @@ impl LocalFileSystem {
         &'a dyn ExecutorFileSystem,
         Option<&'a FileSystemSandboxContext>,
     )> {
+        #[cfg(target_os = "android")]
+        if self.sandboxed.is_none() {
+            // Embedded Android has no desktop sandbox helper. The host
+            // application's Android sandbox is the filesystem boundary.
+            return Ok((&self.unsandboxed, /*sandbox*/ None));
+        }
+
         if sandbox.is_some_and(FileSystemSandboxContext::should_run_in_sandbox) {
             Ok((self.sandboxed()?, sandbox))
         } else {
@@ -117,6 +124,11 @@ impl LocalFileSystem {
         &'a dyn ExecutorFileSystem,
         Option<&'a FileSystemSandboxContext>,
     )> {
+        #[cfg(target_os = "android")]
+        if self.sandboxed.is_none() {
+            return Ok((&self.unsandboxed, /*sandbox*/ None));
+        }
+
         if sandbox.is_some_and(|context| {
             context.should_run_in_sandbox() && !context.unsandboxed_read_fallback_allowed()
         }) {
@@ -140,6 +152,14 @@ impl LocalFileSystem {
         path: &PathUri,
         sandbox: Option<&FileSystemSandboxContext>,
     ) -> FileSystemResult<tokio::fs::File> {
+        #[cfg(target_os = "android")]
+        if self.sandboxed.is_none() {
+            return self
+                .unsandboxed
+                .open_file_for_read(path, /*sandbox*/ None)
+                .await;
+        }
+
         if sandbox.is_some_and(|context| {
             context.should_run_in_sandbox() && !context.unsandboxed_read_fallback_allowed()
         }) {
