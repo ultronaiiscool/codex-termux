@@ -22,18 +22,20 @@ export RUSTY_V8_ARCHIVE RUSTY_V8_SRC_BINDING_PATH
 python3 scripts/check_v8_sandbox.py "${RUSTY_V8_ARCHIVE}"
 
 builtins="$(find "${toolchain}" -name 'libclang_rt.builtins-aarch64-android.a' -print -quit)"
-libcxx_static="$(find "${toolchain}" -name 'libc++_static.a' -print -quit)"
-libcxxabi_static="$(find "${toolchain}" -name 'libc++abi.a' -print -quit)"
+libcxx_static="${toolchain}/sysroot/usr/lib/aarch64-linux-android/libc++_static.a"
+libcxxabi_static="${toolchain}/sysroot/usr/lib/aarch64-linux-android/libc++abi.a"
 
 test -n "${builtins}" || { echo "compiler-rt builtins archive not found" >&2; exit 1; }
-test -n "${libcxx_static}" || { echo "libc++_static.a not found" >&2; exit 1; }
+test -f "${libcxx_static}" || { echo "ARM64 libc++_static.a not found at ${libcxx_static}" >&2; exit 1; }
 
 rustflags="-Clink-arg=${libcxx_static} -Clink-arg=${builtins}"
 if [ -n "${libcxxabi_static}" ]; then
   rustflags="${rustflags} -Clink-arg=${libcxxabi_static}"
 fi
 rustflags="${rustflags} -Clink-arg=-Wl,-z,max-page-size=16384 -Clink-arg=-Wl,-z,common-page-size=16384"
-export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="${rustflags}"
+# RUSTFLAGS overrides codex-rs/.cargo/config.toml for this build so the
+# normal Termux -lc++_shared flag is not inherited by the single-file Quest cdylib.
+export RUSTFLAGS="${rustflags}"
 
 (
   cd codex-rs
