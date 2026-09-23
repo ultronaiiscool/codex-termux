@@ -11,6 +11,8 @@ export OPENSSL_NO_PKG_CONFIG=1
 # This library runs inside BONELAB. Keep Rust panics unwindable so the C ABI
 # can catch them instead of aborting the entire game process.
 export CARGO_PROFILE_RELEASE_PANIC=unwind
+export CARGO_PROFILE_RELEASE_LTO=false
+export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
 export CC_aarch64_linux_android="aarch64-linux-android29-clang"
 export CXX_aarch64_linux_android="aarch64-linux-android29-clang++"
 export AR_aarch64_linux_android="llvm-ar"
